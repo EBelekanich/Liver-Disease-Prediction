@@ -211,3 +211,32 @@ glimpse(df_test.scored)
 ```
 
 
+Logistic Regression Model
+
+```{r}
+set.seed(476)
+lrFit <- train(x = df_train,
+              y = selector_train,
+              method = "glm",
+              metric = "ROC",
+              trControl = ctrl)
+lrFit
+lrFit$finalModel
+```
+
+## Validation and testing (model tuning and evaluation)
+
+```{r}
+# we will make a grid of values to test in cross-validation.
+lrGrid <-  expand.grid(parameter = c(1:50))
+
+set.seed(476)
+lrFitTune <- train(x = df_train, 
+               y = selector_train,
+               method = "glm",
+               metric = "ROC",
+               tuneGrid = lrGrid,
+               trControl = ctrl)
+lrFitTune
+```
+
