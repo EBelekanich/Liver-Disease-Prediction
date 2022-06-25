@@ -211,32 +211,40 @@ glimpse(df_test.scored)
 ```
 
 
-Logistic Regression Model
-
+Random Forest - Bagging
 ```{r}
 set.seed(476)
-lrFit <- train(x = df_train,
-              y = selector_train,
-              method = "glm",
-              metric = "ROC",
-              trControl = ctrl)
-lrFit
-lrFit$finalModel
+rfFit <- train(x = df_train, 
+               y = selector_train,
+               method = "rf",
+               metric = "ROC",
+               trControl = ctrl)
+rfFit
+rfFit$finalModel
 ```
 
 ## Validation and testing (model tuning and evaluation)
 
 ```{r}
 # we will make a grid of values to test in cross-validation.
-lrGrid <-  expand.grid(parameter = c(1:50))
+rfGrid <-  expand.grid(.mtry = c(1:10))
 
 set.seed(476)
-lrFitTune <- train(x = df_train, 
+rfFitTune <- train(x = df_train, 
                y = selector_train,
-               method = "glm",
+               method = "rf",
                metric = "ROC",
-               tuneGrid = lrGrid,
+               tuneGrid = rfGrid,
                trControl = ctrl)
-lrFitTune
+rfFitTune
+plot(rfFitTune)
+rfFitTune$finalModel
 ```
+
+## Evaluating the Model
+```{r}
+prediction <- predict(rfFitTune,df_test)
+confusionMatrix(prediction,selector_test)
+```
+
 
