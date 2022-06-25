@@ -247,4 +247,41 @@ prediction <- predict(rfFitTune,df_test)
 confusionMatrix(prediction,selector_test)
 ```
 
+C5.0 - Boosting
+```{r, warning = FALSE, message = FALSE}
+set.seed(476)
+CFit <- train(x = df_train, 
+               y = selector_train,
+               method = "C5.0",
+               metric = "ROC",
+               trControl = ctrl)
+CFit
+CFit$finalModel
+```
+
+## Validation and testing (model tuning and evaluation)
+
+```{r, warning = FALSE, message = FALSE}
+# we will make a grid of values to test in cross-validation.
+CGrid <-  expand.grid(.trials= c(1,5,10,15,20), .winnow= c(TRUE,FALSE), .model= "tree")
+
+set.seed(476)
+CFitTune <- train(x = df_train, 
+               y = selector_train,
+               method = "C5.0",
+               metric = "ROC",
+               tuneGrid = CGrid,
+               trControl = ctrl)
+CFitTune
+plot(CFitTune)
+CFitTune$finalModel
+```
+
+## Evaluating the Model
+```{r}
+predictions <- predict(CFitTune,df_test)
+confusionMatrix(predictions,selector_test)
+```
+
+
 
