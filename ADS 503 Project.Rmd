@@ -1,4 +1,11 @@
 ---
+title: "Liver Disease"
+author: "Travis Lloyd"
+date: '2022-06-24'
+output: html_document
+---
+
+---
 title: "R Notebook"
 output: html_notebook
 ---
@@ -48,6 +55,8 @@ Attribute Information:
 ilpd <- read.csv("Indian Liver Patient Dataset (ILPD).csv",
                header = FALSE)
 colnames(ilpd) = c("age", "gender", "tb", "db", "alkphos", "sgpt", "sgot", "tp", "alb", "ag_ratio", "selector")
+ilpd$selector <- ifelse(ilpd$selector == 1, "Patient", "NonPatient")
+str(ilpd)
 ```
 
 
@@ -62,7 +71,6 @@ describeBy(ilpd, "selector")
 g1 <- ggpairs(data=ilpd, title="Indian Liver Patient Dataset",
   mapping=ggplot2::aes(colour = as.factor(selector), alpha=0.5),
   lower=list(combo=wrap("facethist",binwidth=1)))
-
 g1
 ```
 
@@ -73,13 +81,11 @@ g1
 # Creating a Dummy Variable and converting the Outcome in a factor
 df <- ilpd %>% 
   mutate(male = ifelse(gender == "Male", 1, 0), .after=gender) %>%
-  mutate(selector = as.factor(paste0("G",selector))) %>% 
+  mutate(selector = as.factor(selector)) %>% 
   select(-gender)
-
 # Zero- and Near Zero-Variance Predictors
 who = nearZeroVar(df)
 if(length(who) > 0) df <- df[,-who]
-
 # Identifying Correlated Predictors
 who = df %>% 
   select(-selector) %>% 
@@ -87,33 +93,22 @@ who = df %>%
   findCorrelation(cutoff=.75)
   
 if(length(who) > 0) df <- df[,-who]
-
 # Linear Dependencies
 who = df %>% 
   select(-selector) %>% 
   cov(use="complete.obs") %>% 
   findLinearCombos()
-
 if(length(who$remove) > 0) df <- df[,-who$remove]
-
-# Imputation for missing values
-df <- impute(df)
 
 # Removing Influential Obs by Cooks distance
 mod <- glm(selector ~ ., data=df, family="binomial")
 cooksd <- cooks.distance(mod)
 who <- cooksd > 4*mean(cooksd, na.rm=T)
+if(sum(who) > 0) 
+  df <- df[-who,]
 
-if(sum(who) > 0) df <- df[-who,]
-
-# Centering and scaling
-df_clean <- df %>% 
-  select(-selector) %>% 
-  scale() %>% 
-  as.data.frame() 
-
-# The outcome
-selector = df$selector
+selector <- df[ ,ncol(df)]
+df <- df[,1:ncol(df)-1]
 ```
 
 
@@ -124,11 +119,20 @@ set.seed(123)
 ## Partition the data with stratified sampling
 training <- createDataPartition(selector, p = .8, list = FALSE)
 ## Partition train and test sets
-df_train <- df_clean[training, ]
-df_test <- df_clean[-training, ]
+df_train <- df[training, ]
+df_test <- df[-training, ]
 ## Partition for the train and test sets for the response variable
 selector_train <- selector[training]
 selector_test <- selector[-training]
+
+## Impute the missing data using knn method built into caret package
+trainimp <- preProcess(df_train, "knnImpute")
+df_train <- predict(trainimp, df_train)
+df_test <- predict(trainimp, df_test)
+
+summary(trainpr)
+summary(testpr)
+
 ## Set training control for model building
 ctrl <- trainControl(method = "repeatedcv", 10, 
                      repeats = 10, 
@@ -155,7 +159,6 @@ knnFit$finalModel
 ```{r}
 # we will make a grid of values to test in cross-validation.
 knnGrid <-  expand.grid(k = c(1:50))
-
 set.seed(476)
 knnFitTune <- train(x = df_train, 
                y = selector_train,
@@ -180,10 +183,9 @@ knnFitTune$finalModel
 ```{r}
 knnCM <- confusionMatrix(knnFitTune, norm = "none")
 knnCM
-
 ## Plot the ROC curve for the hold-out set
 knnRoc <- roc(response = knnFitTune$pred$obs,
-             predictor = knnFitTune$pred$G1,
+             predictor = knnFitTune$pred$Patient,
              levels = levels(knnFitTune$pred$obs))
 ```
 
@@ -203,14 +205,77 @@ plot(knnImp)
 # let's score the test set using this model
 pred_class <- predict(knnFitTune, df_test,'raw')
 probs <- predict(knnFitTune, df_test,'prob')
-
 # Merge original scaled test dataset with predicions
 df_test.scored <- cbind(df[-training,], pred_class, probs)
-
 glimpse(df_test.scored)
 ```
 
 
+Logistic Regression Model
+
+```{r, warning=FALSE}
+set.seed(476)
+lrFit <- train(x = df_train,
+              y = selector_train,
+              method = "glm",
+              metric = "ROC",
+              trControl = ctrl)
+lrFit
+lrFit$finalModel
+```
+
+## Validation and testing (model tuning and evaluation)
+
+```{r, warning=FALSE}
+# we will make a grid of values to test in cross-validation.
+lrGrid <-  expand.grid(parameter = c(1:50))
+set.seed(476)
+lrFitTune <- train(x = df_train, 
+               y = selector_train,
+               method = "glm",
+               metric = "ROC",
+               tuneGrid = lrGrid,
+               trControl = ctrl)
+lrFitTune
+```
+
+## LDA Model
+```{r, warning=FALSE}
+# we will make a grid of values to test in cross-validation.
+set.seed(476)
+ldaFit <- train(x = df_train,
+              y = selector_train,
+              method = "lda",
+              preProc = c("center","scale"),
+              metric = "ROC",
+              trControl = ctrl)
+ldaFit
+ldaFit$finalModel
+```
+
+```{r, warning=FALSE}
+# we will make a grid of values to test in cross-validation.
+set.seed(476)
+ldaFitTune <- train(x = df_train, 
+               y = selector_train,
+               method = "lda",
+               preProc = c("center","scale"),
+               metric = "ROC",
+               trControl = ctrl)
+ldaFitTune
+```
+
+```{r}
+ldaCM <- confusionMatrix(ldaFit, mode = prec_recall, norm = "none")
+ldaCM
+
+ldaRoc <- roc(response = ldaFit$pred$obs,
+              predictor = ldaFit$pred$Patient,
+              levels = rev(levels(ldaFit$pred$obs)))
+
+plot(ldaRoc,legacy.axes = TRUE)
+
+```
 Random Forest - Bagging
 ```{r}
 set.seed(476)
@@ -228,7 +293,6 @@ rfFit$finalModel
 ```{r}
 # we will make a grid of values to test in cross-validation.
 rfGrid <-  expand.grid(.mtry = c(1:10))
-
 set.seed(476)
 rfFitTune <- train(x = df_train, 
                y = selector_train,
@@ -264,7 +328,6 @@ CFit$finalModel
 ```{r, warning = FALSE, message = FALSE}
 # we will make a grid of values to test in cross-validation.
 CGrid <-  expand.grid(.trials= c(1,5,10,15,20), .winnow= c(TRUE,FALSE), .model= "tree")
-
 set.seed(476)
 CFitTune <- train(x = df_train, 
                y = selector_train,
@@ -282,6 +345,64 @@ CFitTune$finalModel
 predictions <- predict(CFitTune,df_test)
 confusionMatrix(predictions,selector_test)
 ```
+
+## XGBoost Model
+```{r, warning=FALSE}
+# we will make a grid of values to test in cross-validation.
+set.seed(476)
+xgbFit <- train(x = df_train,
+              y = selector_train,
+              method = "xgbTree",
+              metric = "ROC",
+              trControl = ctrl)
+xgbFit
+xgbFit$finalModel
+```
+
+```{r, warning=FALSE}
+# we will make a grid of values to test in cross-validation.
+set.seed(476)
+xgbFitTune <- train(x = df_train, 
+               y = selector_train,
+               method = "xgbTree",
+               objective = "reg:squarederror",
+               trControl = trainControl(method = "repeatedcv",
+                                        number = 3,
+                                        repeats = 2,
+                                        verboseIter = TRUE),
+               tune.grid = expand.grid(nrounds = c(500, 1000, 1500),
+                                       eta = c(0.1, 0.5),
+                                       colsample_bytree = c(0.5,1),
+                                       subsample = c(0.5,1),
+                                       gamma = c(0,50),
+                                       min_child_weight = c(0,20)))
+
+
+```
+
+```{r}
+xgtest <- predict(xgbFitTune, df_test)
+xgtest <- as.numeric(as.character(xgtest))
+selector_test <- as.numeric(as.character(selector_test))
+str(xgtest)
+testerror <- xgtest - selector_test
+mean(testerror)
+sqrt(mean(testerror^2))
+```
+
+
+```{r}
+xgbCM <- confusionMatrix(xgbFit, mode = prec_recall, norm = "none")
+xgbCM
+
+xgbRoc <- roc(response = xgbFit$pred$obs,
+              predictor = xgbFit$pred$Patient,
+              levels = rev(levels(xgbFit$pred$obs)))
+
+plot(xgbRoc,legacy.axes = TRUE)
+
+```
+
 
 
 
