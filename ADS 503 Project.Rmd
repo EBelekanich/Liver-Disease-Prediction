@@ -1,8 +1,11 @@
 ---
 title: "Liver Disease"
-author: "Travis Lloyd"
+author: "Travis Lloyd, Emina Belekanich, Mendelina Lopez"
 date: '2022-06-24'
-output: html_document
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
 ---
 
 ---
@@ -142,12 +145,12 @@ ctrl <- trainControl(method = "repeatedcv", 10,
 
 KNN Model
 
-```{r}
+```{r, warning=FALSE}
 set.seed(476)
 knnFit <- train(x = df_train, 
                y = selector_train,
                method = "knn",
-               metric = "ROC",
+               metric = "AUC",
                trControl = ctrl)
 knnFit
 knnFit$finalModel
@@ -155,7 +158,7 @@ knnFit$finalModel
 
 ## Validation and testing (model tuning and evaluation)
 
-```{r}
+```{r, warning=FALSE}
 # we will make a grid of values to test in cross-validation.
 knnGrid <-  expand.grid(k = c(1:50))
 set.seed(476)
@@ -200,7 +203,7 @@ plot(knnImp)
 ## Evaluating the Model
 ```{r}
 predictions <- predict(knnFitTune,df_test)
-confusionMatrix(predictions,selector_test)
+confusionMatrix(predictions,selector_test, mode = "prec_recall")
 ```
 
 
@@ -223,7 +226,7 @@ set.seed(476)
 lrFit <- train(x = df_train,
               y = selector_train,
               method = "glm",
-              metric = "ROC",
+              metric = "AUC",
               trControl = ctrl)
 lrFit
 lrFit$finalModel
@@ -242,6 +245,11 @@ plot(lrRoc, legacy.axes = TRUE)
 lrRoc$auc
 ```
 
+```{r}
+predictions <- predict(lrFit,df_test)
+confusionMatrix(predictions,selector_test, mode = "prec_recall")
+```
+
 ## LDA Model
 ```{r, warning=FALSE}
 set.seed(476)
@@ -249,22 +257,20 @@ ldaFit <- train(x = df_train,
               y = selector_train,
               method = "lda",
               preProc = c("center","scale"),
-              metric = "ROC",
-              trControl = ctrl)
+              metric = "AUC",
+              trControl = ctrl
+              )
 ldaFit
 ldaFit$finalModel
 ```
 
 ## Evaluating the Model
 ```{r}
-predictions <- predict(lrFit,df_test)
-confusionMatrix(predictions,selector_test)
+predictions <- predict(ldaFit,df_test)
+confusionMatrix(predictions,selector_test, mode = "prec_recall")
 ```
 
 ```{r}
-ldaCM <- confusionMatrix(ldaFit, mode = prec_recall, norm = "none")
-ldaCM
-
 ldaRoc <- roc(response = ldaFit$pred$obs,
               predictor = ldaFit$pred$Patient,
               levels = rev(levels(ldaFit$pred$obs)))
@@ -273,19 +279,13 @@ plot(ldaRoc,legacy.axes = TRUE)
 
 ```
 
-## Evaluating the Model
-```{r}
-predictions <- predict(ldaFitTune,df_test)
-confusionMatrix(predictions,selector_test)
-```
-
-Random Forest - Bagging
+# Random Forest - Bagging
 ```{r}
 set.seed(476)
 rfFit <- train(x = df_train, 
                y = selector_train,
                method = "rf",
-               metric = "ROC",
+               metric = "AUC",
                trControl = ctrl)
 rfFit
 rfFit$finalModel
@@ -311,7 +311,7 @@ rfFitTune$finalModel
 ## Evaluating the Model
 ```{r}
 prediction <- predict(rfFitTune,df_test)
-confusionMatrix(prediction,selector_test)
+confusionMatrix(prediction,selector_test, mode = "prec_recall")
 ```
 
 C5.0 - Boosting
@@ -320,7 +320,7 @@ set.seed(476)
 CFit <- train(x = df_train, 
                y = selector_train,
                method = "C5.0",
-               metric = "ROC",
+               metric = "AUC",
                trControl = ctrl)
 CFit
 CFit$finalModel
@@ -335,7 +335,7 @@ set.seed(476)
 CFitTune <- train(x = df_train, 
                y = selector_train,
                method = "C5.0",
-               metric = "ROC",
+               metric = "AUC",
                tuneGrid = CGrid,
                trControl = ctrl)
 CFitTune
@@ -346,20 +346,8 @@ CFitTune$finalModel
 ## Evaluating the Model
 ```{r}
 predictions <- predict(CFitTune,df_test)
-confusionMatrix(predictions,selector_test)
+confusionMatrix(predictions,selector_test, mode = "prec_recall")
 ```
 
 
-
-
-```{r}
-resamps <- resamples(list(KNN = knnFitTune,
-                          GLM = lrFit,
-                          LDA = ldaFit,
-                          RFM = rfFitTune,
-                          C50 = CFitTune
-                          ))
-summary(resamps)
-
-```
 
