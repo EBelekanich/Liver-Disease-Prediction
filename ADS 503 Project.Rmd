@@ -12,7 +12,7 @@ output: html_notebook
 
 ## Loading packages
 
-```{r}
+```{r, warning=FALSE}
 library(AppliedPredictiveModeling)
 library (tidyverse)
 library(psych)
@@ -56,7 +56,6 @@ ilpd <- read.csv("Indian Liver Patient Dataset (ILPD).csv",
                header = FALSE)
 colnames(ilpd) = c("age", "gender", "tb", "db", "alkphos", "sgpt", "sgot", "tp", "alb", "ag_ratio", "selector")
 ilpd$selector <- ifelse(ilpd$selector == 1, "Patient", "NonPatient")
-str(ilpd)
 ```
 
 
@@ -130,8 +129,8 @@ trainimp <- preProcess(df_train, "knnImpute")
 df_train <- predict(trainimp, df_train)
 df_test <- predict(trainimp, df_test)
 
-summary(trainpr)
-summary(testpr)
+summary(df_train)
+summary(df_test)
 
 ## Set training control for model building
 ctrl <- trainControl(method = "repeatedcv", 10, 
@@ -181,8 +180,8 @@ knnFitTune$finalModel
 ## Results and final model selection (performance measures, etc.)
 
 ```{r}
-knnCM <- confusionMatrix(knnFitTune, norm = "none")
-knnCM
+confusionMatrix(knnFitTune, norm = "none", mode="everything")
+
 ## Plot the ROC curve for the hold-out set
 knnRoc <- roc(response = knnFitTune$pred$obs,
              predictor = knnFitTune$pred$Patient,
@@ -198,6 +197,12 @@ knnRoc$auc
 knnImp <- varImp(knnFitTune, scale = FALSE)
 plot(knnImp)
 ```
+## Evaluating the Model
+```{r}
+predictions <- predict(knnFitTune,df_test)
+confusionMatrix(predictions,selector_test)
+```
+
 
 ## Score Test Data
 
@@ -224,24 +229,21 @@ lrFit
 lrFit$finalModel
 ```
 
-## Validation and testing (model tuning and evaluation)
 
-```{r, warning=FALSE}
-# we will make a grid of values to test in cross-validation.
-lrGrid <-  expand.grid(parameter = c(1:50))
-set.seed(476)
-lrFitTune <- train(x = df_train, 
-               y = selector_train,
-               method = "glm",
-               metric = "ROC",
-               tuneGrid = lrGrid,
-               trControl = ctrl)
-lrFitTune
+```{r}
+lrCM <- confusionMatrix(lrFit, norm = "none", mode="everything")
+lrCM
+?confusionMatrix
+## Plot the ROC curve for the hold-out set
+lrRoc <- roc(response = lrFit$pred$obs,
+             predictor = lrFit$pred$Patient,
+             levels = levels(lrFit$pred$obs))
+plot(lrRoc, legacy.axes = TRUE)
+lrRoc$auc
 ```
 
 ## LDA Model
 ```{r, warning=FALSE}
-# we will make a grid of values to test in cross-validation.
 set.seed(476)
 ldaFit <- train(x = df_train,
               y = selector_train,
@@ -253,16 +255,10 @@ ldaFit
 ldaFit$finalModel
 ```
 
-```{r, warning=FALSE}
-# we will make a grid of values to test in cross-validation.
-set.seed(476)
-ldaFitTune <- train(x = df_train, 
-               y = selector_train,
-               method = "lda",
-               preProc = c("center","scale"),
-               metric = "ROC",
-               trControl = ctrl)
-ldaFitTune
+## Evaluating the Model
+```{r}
+predictions <- predict(lrFit,df_test)
+confusionMatrix(predictions,selector_test)
 ```
 
 ```{r}
@@ -276,6 +272,13 @@ ldaRoc <- roc(response = ldaFit$pred$obs,
 plot(ldaRoc,legacy.axes = TRUE)
 
 ```
+
+## Evaluating the Model
+```{r}
+predictions <- predict(ldaFitTune,df_test)
+confusionMatrix(predictions,selector_test)
+```
+
 Random Forest - Bagging
 ```{r}
 set.seed(476)
@@ -346,63 +349,17 @@ predictions <- predict(CFitTune,df_test)
 confusionMatrix(predictions,selector_test)
 ```
 
-## XGBoost Model
-```{r, warning=FALSE}
-# we will make a grid of values to test in cross-validation.
-set.seed(476)
-xgbFit <- train(x = df_train,
-              y = selector_train,
-              method = "xgbTree",
-              metric = "ROC",
-              trControl = ctrl)
-xgbFit
-xgbFit$finalModel
-```
 
-```{r, warning=FALSE}
-# we will make a grid of values to test in cross-validation.
-set.seed(476)
-xgbFitTune <- train(x = df_train, 
-               y = selector_train,
-               method = "xgbTree",
-               objective = "reg:squarederror",
-               trControl = trainControl(method = "repeatedcv",
-                                        number = 3,
-                                        repeats = 2,
-                                        verboseIter = TRUE),
-               tune.grid = expand.grid(nrounds = c(500, 1000, 1500),
-                                       eta = c(0.1, 0.5),
-                                       colsample_bytree = c(0.5,1),
-                                       subsample = c(0.5,1),
-                                       gamma = c(0,50),
-                                       min_child_weight = c(0,20)))
-
-
-```
-
-```{r}
-xgtest <- predict(xgbFitTune, df_test)
-xgtest <- as.numeric(as.character(xgtest))
-selector_test <- as.numeric(as.character(selector_test))
-str(xgtest)
-testerror <- xgtest - selector_test
-mean(testerror)
-sqrt(mean(testerror^2))
-```
 
 
 ```{r}
-xgbCM <- confusionMatrix(xgbFit, mode = prec_recall, norm = "none")
-xgbCM
-
-xgbRoc <- roc(response = xgbFit$pred$obs,
-              predictor = xgbFit$pred$Patient,
-              levels = rev(levels(xgbFit$pred$obs)))
-
-plot(xgbRoc,legacy.axes = TRUE)
+resamps <- resamples(list(KNN = knnFitTune,
+                          GLM = lrFit,
+                          LDA = ldaFit,
+                          RFM = rfFitTune,
+                          C50 = CFitTune
+                          ))
+summary(resamps)
 
 ```
-
-
-
 
